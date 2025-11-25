@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test --config=node_modules/@crm/e2e-tests/playwright.config.ts",
+    "test:e2e:smoke": "playwright test --project=smoke --config=node_modules/@crm/e2e-tests/playwright.config.ts",
+    "test:e2e:regression": "playwright test --project=regression --config=node_modules/@crm/e2e-tests/playwright.config.ts",
+    "test:e2e:report": "playwright test --config=node_modules/@crm/e2e-tests/playwright.config.ts && playwright show-report --config=node_modules/@crm/e2e-tests/playwright.config.ts"
   },
   "dependencies": {
     "react": "^19.2.0",
