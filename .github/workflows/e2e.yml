@@ -81,7 +81,6 @@ jobs:
       # 3️⃣ Merge HTML reports
       - name: Merge HTML reports
         run: |
-          npm install --no-save playwright-merge-html-reports
           mkdir -p merged-report
           npx playwright-merge-html-reports ./report-smoke ./report-regression -o merged-report
 
