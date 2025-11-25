@@ -13,33 +13,39 @@ jobs:
         project: [smoke, regression]
 
     steps:
+      # 1️⃣ Checkout (нужен для gh-pages и артефактов)
       - uses: actions/checkout@v4
 
+      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Install package
+      # 3️⃣ Установка пакета
+      - name: Install @crm/e2e-tests
         run: npm install @crm/e2e-tests
 
+      # 4️⃣ Установка браузеров Playwright внутри пакета
       - name: Install Playwright browsers
         working-directory: node_modules/@crm/e2e-tests
         run: npx playwright install --with-deps
 
-      - name: Run ${{ matrix.project }}
+      # 5️⃣ Прогон smoke/regression
+      - name: Run ${{ matrix.project }} tests
         working-directory: node_modules/@crm/e2e-tests
         env:
-            E2E_ADMIN_USERNAME: ${{ secrets.E2E_ADMIN_USERNAME }}
-            E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
-            E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
-            E2E_USER_USERNAME: ${{ secrets.E2E_USER_USERNAME }}
-            E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
-            E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
-        run: npm run test:e2e:${{ matrix.project }}
+          E2E_ADMIN_USERNAME: ${{ secrets.E2E_ADMIN_USERNAME }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          E2E_USER_USERNAME: ${{ secrets.E2E_USER_USERNAME }}
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+        run: npx playwright test --project=${{ matrix.project }} --config=playwright.config.ts
 
-      - name: Upload individual reports
+      # 6️⃣ Upload individual HTML reports
+      - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -51,28 +57,34 @@ jobs:
     needs: [e2e]
 
     steps:
+      # 1️⃣ Checkout
       - uses: actions/checkout@v4
 
+      # 2️⃣ Download artifacts (от smoke и regression)
       - name: Download reports
         uses: actions/download-artifact@v4
 
+      # 3️⃣ Merge HTML reports
       - name: Merge HTML reports
         run: |
           mkdir merged-report
           npx playwright-merge-html-reports ./report-smoke ./report-regression -o merged-report
 
+      # 4️⃣ Upload merged report (артефакт)
       - name: Upload merged report
         uses: actions/upload-artifact@v4
         with:
           name: merged-report
           path: merged-report
 
+      # 5️⃣ Publish merged report в GitHub Pages для PR-preview
       - name: Publish to GitHub Pages
         uses: actions/deploy-pages@v4
         with:
           path: merged-report
 
-      - name: Comment PR with link
+      # 6️⃣ Оставить комментарий в PR со ссылкой на HTML report
+      - name: Comment PR with report link
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
