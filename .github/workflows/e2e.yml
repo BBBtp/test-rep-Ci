@@ -13,7 +13,7 @@ jobs:
         project: [smoke, regression]
 
     steps:
-      # 1️⃣ Checkout (нужен для gh-pages и артефактов)
+      # 1️⃣ Checkout
       - uses: actions/checkout@v4
 
       # 2️⃣ Setup Node.js
@@ -23,16 +23,21 @@ jobs:
           node-version: 20
           cache: npm
 
-      # 3️⃣ Установка пакета
+      # 3️⃣ Install the package
       - name: Install @crm/e2e-tests
         run: npm install @crm/e2e-tests
 
-      # 4️⃣ Установка браузеров Playwright внутри пакета
+      # 4️⃣ Install package devDependencies (Playwright, TypeScript, etc.)
+      - name: Install package dependencies
+        working-directory: node_modules/@crm/e2e-tests
+        run: npm install
+
+      # 5️⃣ Install Playwright browsers
       - name: Install Playwright browsers
         working-directory: node_modules/@crm/e2e-tests
         run: npx playwright install --with-deps
 
-      # 5️⃣ Прогон smoke/regression
+      # 6️⃣ Run smoke/regression tests
       - name: Run ${{ matrix.project }} tests
         working-directory: node_modules/@crm/e2e-tests
         env:
@@ -44,7 +49,7 @@ jobs:
           E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
         run: npx playwright test --project=${{ matrix.project }} --config=playwright.config.ts
 
-      # 6️⃣ Upload individual HTML reports
+      # 7️⃣ Upload individual HTML reports
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -60,7 +65,7 @@ jobs:
       # 1️⃣ Checkout
       - uses: actions/checkout@v4
 
-      # 2️⃣ Download artifacts (от smoke и regression)
+      # 2️⃣ Download individual reports
       - name: Download reports
         uses: actions/download-artifact@v4
 
@@ -70,20 +75,20 @@ jobs:
           mkdir merged-report
           npx playwright-merge-html-reports ./report-smoke ./report-regression -o merged-report
 
-      # 4️⃣ Upload merged report (артефакт)
+      # 4️⃣ Upload merged report as artifact
       - name: Upload merged report
         uses: actions/upload-artifact@v4
         with:
           name: merged-report
           path: merged-report
 
-      # 5️⃣ Publish merged report в GitHub Pages для PR-preview
+      # 5️⃣ Publish merged report to GitHub Pages
       - name: Publish to GitHub Pages
         uses: actions/deploy-pages@v4
         with:
           path: merged-report
 
-      # 6️⃣ Оставить комментарий в PR со ссылкой на HTML report
+      # 6️⃣ Comment PR with link to HTML report
       - name: Comment PR with report link
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
