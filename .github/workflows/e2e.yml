@@ -13,7 +13,7 @@ jobs:
         project: [smoke, regression]
 
     steps:
-      # 1️⃣ Checkout main repo (твой проект, если нужен)
+      # 1️⃣ Checkout main repo (если нужен)
       - uses: actions/checkout@v4
 
       # 2️⃣ Setup Node.js
@@ -23,7 +23,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      # 3️⃣ Checkout E2E tests repo отдельно
+      # 3️⃣ Checkout E2E tests repo
       - name: Checkout E2E tests
         uses: actions/checkout@v4
         with:
@@ -31,15 +31,10 @@ jobs:
           ref: main
           path: e2e-tests
 
-      # 4️⃣ Install dependencies for E2E tests
+      # 4️⃣ Install dependencies
       - name: Install dependencies
         working-directory: e2e-tests
         run: npm ci
-
-      # 4.1️⃣ Install playwright-merge-html-reports
-      - name: Install playwright-merge-html-reports
-        working-directory: e2e-tests
-        run: npm install --no-save playwright-merge-html-reports
 
       # 5️⃣ Install Playwright browsers
       - name: Install Playwright browsers
@@ -58,7 +53,7 @@ jobs:
           E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
         run: npx playwright test --project=${{ matrix.project }}
 
-      # 7️⃣ Upload individual reports
+      # 7️⃣ Upload individual HTML reports
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,15 +69,23 @@ jobs:
       # 1️⃣ Checkout
       - uses: actions/checkout@v4
 
-      # 2️⃣ Download individual reports
+      # 2️⃣ Download smoke + regression reports
       - name: Download reports
         uses: actions/download-artifact@v4
+        with:
+          name: report-smoke
+          path: report-smoke
+      - uses: actions/download-artifact@v4
+        with:
+          name: report-regression
+          path: report-regression
 
-      # 3️⃣ Merge HTML reports
-      - name: Merge HTML reports
+      # 3️⃣ Merge HTML reports manually
+      - name: Merge reports
         run: |
           mkdir -p merged-report
-          npx playwright-merge-html-reports ./report-smoke ./report-regression -o merged-report
+          cp -r report-smoke/* merged-report/
+          cp -r report-regression/* merged-report/
 
       # 4️⃣ Upload merged report as artifact
       - name: Upload merged report
@@ -97,7 +100,7 @@ jobs:
         with:
           path: merged-report
 
-      # 6️⃣ Comment PR with link to HTML report
+      # 6️⃣ Comment PR with link
       - name: Comment PR with report link
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
