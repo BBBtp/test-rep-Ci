@@ -82,7 +82,7 @@ jobs:
           name: merged-report
           path: merged-report
 
-      # 5️⃣ Publish merged report to GitHub Pages
+
       - name: Publish to GitHub Pages
         uses: actions/deploy-pages@v4
         with:
