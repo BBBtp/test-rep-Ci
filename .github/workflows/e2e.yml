@@ -85,9 +85,11 @@ jobs:
 
       - name: Merge reports
         run: |
-          mkdir -p merged-report
-          cp -r report-smoke/* merged-report/
-          cp -r report-regression/* merged-report/
+          mkdir -p merged-report/smoke
+          mkdir -p merged-report/regression
+
+          cp -r report-smoke/* merged-report/smoke/
+          cp -r report-regression/* merged-report/regression/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
