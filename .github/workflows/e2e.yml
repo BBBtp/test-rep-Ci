@@ -36,6 +36,11 @@ jobs:
         working-directory: e2e-tests
         run: npm ci
 
+      # 4.1️⃣ Install playwright-merge-html-reports
+      - name: Install playwright-merge-html-reports
+        working-directory: e2e-tests
+        run: npm install --no-save playwright-merge-html-reports
+
       # 5️⃣ Install Playwright browsers
       - name: Install Playwright browsers
         working-directory: e2e-tests
@@ -53,7 +58,7 @@ jobs:
           E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
         run: npx playwright test --project=${{ matrix.project }}
 
-
+      # 7️⃣ Upload individual reports
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,7 +81,8 @@ jobs:
       # 3️⃣ Merge HTML reports
       - name: Merge HTML reports
         run: |
-          mkdir merged-report
+          npm install --no-save playwright-merge-html-reports
+          mkdir -p merged-report
           npx playwright-merge-html-reports ./report-smoke ./report-regression -o merged-report
 
       # 4️⃣ Upload merged report as artifact
