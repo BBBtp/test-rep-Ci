@@ -1,0 +1,82 @@
+name: E2E Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [smoke, regression]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install package
+        run: npm install @crm/e2e-tests
+
+      - name: Install Playwright browsers
+        working-directory: node_modules/@crm/e2e-tests
+        run: npx playwright install --with-deps
+
+      - name: Run ${{ matrix.project }}
+        working-directory: node_modules/@crm/e2e-tests
+        env:
+            E2E_ADMIN_USERNAME: ${{ secrets.E2E_ADMIN_USERNAME }}
+            E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+            E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+            E2E_USER_USERNAME: ${{ secrets.E2E_USER_USERNAME }}
+            E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+            E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+        run: npm run test:e2e:${{ matrix.project }}
+
+      - name: Upload individual reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.project }}
+          path: node_modules/@crm/e2e-tests/playwright-report
+
+  merge-reports:
+    runs-on: ubuntu-latest
+    needs: [e2e]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download reports
+        uses: actions/download-artifact@v4
+
+      - name: Merge HTML reports
+        run: |
+          mkdir merged-report
+          npx playwright-merge-html-reports ./report-smoke ./report-regression -o merged-report
+
+      - name: Upload merged report
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-report
+          path: merged-report
+
+      - name: Publish to GitHub Pages
+        uses: actions/deploy-pages@v4
+        with:
+          path: merged-report
+
+      - name: Comment PR with link
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: "E2E Summary"
+          message: |
+            ✅ Smoke & Regression finished  
+            👉 HTML report: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.html
