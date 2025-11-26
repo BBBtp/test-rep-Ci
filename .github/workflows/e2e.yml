@@ -48,7 +48,7 @@ jobs:
           E2E_USER_USERNAME: ${{ secrets.E2E_USER_USERNAME }}
           E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
           E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
-        run: npx playwright test --project=${{ matrix.project }}
+        run: npx playwright test --project=${{ matrix.project }} --reporter=blob,html,json
 
       - name: Upload reports
         if: always()
@@ -63,6 +63,14 @@ jobs:
         with:
           name: json-${{ matrix.project }}
           path: e2e-tests/test-results.json
+
+      - name: Upload blob reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-${{ matrix.project }}
+          path: e2e-tests/blob-report
+          retention-days: 1
 
   # ==========================
   # 2) MERGE REPORTS
@@ -90,6 +98,12 @@ jobs:
           pattern: json-*
           path: json-results
 
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-*
+          path: blob-reports
+
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
@@ -105,12 +119,39 @@ jobs:
           echo "failed=$FAILED" >> $GITHUB_OUTPUT
           echo "status=$([ $FAILED -eq 0 ] && echo '✅' || echo '❌')" >> $GITHUB_OUTPUT
 
+      - name: Setup Playwright for merge
+        uses: actions/checkout@v4
+        with:
+          repository: BBBtp/AezakmiGroup-Tests
+          ref: main
+          path: e2e-tests
+
+      - name: Install dependencies
+        working-directory: e2e-tests
+        run: npm ci
+
       - name: Merge reports
+        working-directory: e2e-tests
         run: |
-          mkdir -p merged-report
-          cp -r reports/report-smoke/playwright-report merged-report/smoke 2>/dev/null || cp -r reports/report-smoke merged-report/smoke
-          cp -r reports/report-regression/playwright-report merged-report/regression 2>/dev/null || cp -r reports/report-regression merged-report/regression
-          echo '<html><body><h1>E2E Reports</h1><a href="smoke/index.html">Smoke Tests</a> | <a href="regression/index.html">Regression Tests</a></body></html>' > merged-report/index.html
+          mkdir -p all-blob-reports
+          # Копируем все blob отчеты в одну папку
+          find ../blob-reports -name "*.zip" -exec cp {} all-blob-reports/ \;
+          
+          # Объединяем blob отчеты через playwright merge-reports
+          if ls all-blob-reports/*.zip 1> /dev/null 2>&1; then
+            npx playwright merge-reports --reporter html all-blob-reports --output ../merged-report
+          else
+            # Fallback: используем JSON отчеты
+            mkdir -p json-reports
+            find ../json-results -name "*.json" -exec cp {} json-reports/ \;
+            if ls json-reports/*.json 1> /dev/null 2>&1; then
+              npx playwright merge-reports --reporter html json-reports/*.json --output ../merged-report
+            else
+              # Последний fallback: используем первый доступный HTML отчет
+              mkdir -p ../merged-report
+              cp -r ../reports/report-smoke/playwright-report/* ../merged-report/ 2>/dev/null || cp -r ../reports/report-smoke/* ../merged-report/ 2>/dev/null || true
+            fi
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
