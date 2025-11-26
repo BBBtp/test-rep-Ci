@@ -57,6 +57,13 @@ jobs:
           name: report-${{ matrix.project }}
           path: e2e-tests/playwright-report
 
+      - name: Upload JSON results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: json-${{ matrix.project }}
+          path: e2e-tests/test-results.json
+
   # ==========================
   # 2) MERGE REPORTS
   # ==========================
@@ -71,25 +78,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download smoke report
+      - name: Download reports
         uses: actions/download-artifact@v4
         with:
-          name: report-smoke
-          path: report-smoke
+          pattern: report-*
+          path: reports
 
-      - name: Download regression report
+      - name: Download JSON results
         uses: actions/download-artifact@v4
         with:
-          name: report-regression
-          path: report-regression
+          pattern: json-*
+          path: json-results
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Get test stats
+        id: stats
+        run: |
+          PASSED=0
+          FAILED=0
+          for json in json-results/json-*/*.json; do
+            [ -f "$json" ] && PASSED=$((PASSED + $(jq -r '.stats.passed // 0' "$json"))) && FAILED=$((FAILED + $(jq -r '.stats.failed // 0' "$json")))
+          done
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+          echo "status=$([ $FAILED -eq 0 ] && echo '✅' || echo '❌')" >> $GITHUB_OUTPUT
 
       - name: Merge reports
         run: |
-          mkdir -p merged-report/smoke
-          mkdir -p merged-report/regression
-
-          cp -r report-smoke/* merged-report/smoke/
-          cp -r report-regression/* merged-report/regression/
+          mkdir -p merged-report
+          cp -r reports/report-smoke/playwright-report merged-report/smoke 2>/dev/null || cp -r reports/report-smoke merged-report/smoke
+          cp -r reports/report-regression/playwright-report merged-report/regression 2>/dev/null || cp -r reports/report-regression merged-report/regression
+          echo '<html><body><h1>E2E Reports</h1><a href="smoke/index.html">Smoke Tests</a> | <a href="regression/index.html">Regression Tests</a></body></html>' > merged-report/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -100,10 +121,14 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: "E2E Summary"
+          header: "E2E Test Results"
           message: |
-            ✅ Smoke + Regression Finished  
-            👉 Report: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.html
+            ${{ steps.stats.outputs.status }} **Tests Completed**
+            
+            ✅ Passed: ${{ steps.stats.outputs.passed }}
+            ❌ Failed: ${{ steps.stats.outputs.failed }}
+            
+            📊 [View Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
 
   # ==========================
   # 3) DEPLOY TO GITHUB PAGES
