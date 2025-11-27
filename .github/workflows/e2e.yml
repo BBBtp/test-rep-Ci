@@ -139,13 +139,18 @@ jobs:
           
           # Объединяем blob отчеты через playwright merge-reports
           if ls all-blob-reports/*.zip 1> /dev/null 2>&1; then
-            npx playwright merge-reports --reporter html all-blob-reports --output ../merged-report
+            npx playwright merge-reports --reporter=html all-blob-reports
+            # Перемещаем результат в нужную папку
+            mkdir -p ../merged-report
+            cp -r playwright-report/* ../merged-report/ 2>/dev/null || true
           else
             # Fallback: используем JSON отчеты
             mkdir -p json-reports
             find ../json-results -name "*.json" -exec cp {} json-reports/ \;
             if ls json-reports/*.json 1> /dev/null 2>&1; then
-              npx playwright merge-reports --reporter html json-reports/*.json --output ../merged-report
+              npx playwright merge-reports --reporter=html json-reports/*.json
+              mkdir -p ../merged-report
+              cp -r playwright-report/* ../merged-report/ 2>/dev/null || true
             else
               # Последний fallback: используем первый доступный HTML отчет
               mkdir -p ../merged-report
