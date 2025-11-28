@@ -121,9 +121,15 @@ jobs:
         run: |
           PASSED=0
           FAILED=0
+
           for json in json-results/json-*/*.json; do
-            [ -f "$json" ] && PASSED=$((PASSED + $(jq -r '.stats.passed // 0' "$json"))) && FAILED=$((FAILED + $(jq -r '.stats.failed // 0' "$json")))
+            [ -f "$json" ] || continue
+            P=$(jq '[.suites[].suites[].specs[].tests[].results[] | select(.status=="passed")] | length' "$json")
+            F=$(jq '[.suites[].suites[].specs[].tests[].results[] | select(.status!="passed")] | length' "$json")
+            PASSED=$((PASSED + P))
+            FAILED=$((FAILED + F))
           done
+
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
           echo "failed=$FAILED" >> $GITHUB_OUTPUT
           echo "status=$([ $FAILED -eq 0 ] && echo '✅' || echo '❌')" >> $GITHUB_OUTPUT
@@ -191,6 +197,7 @@ jobs:
     permissions:
       pages: write
       id-token: write
+      pull-requests: write
 
     steps:
       - name: Deploy to GitHub Pages
