@@ -6,186 +6,97 @@ on:
     branches: [main]
 
 jobs:
-  # ==========================
-  # 1) E2E TEST RUNNER
-  # ==========================
   e2e:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         project: [smoke, regression]
 
+    env:
+      E2E_ADMIN_USERNAME: ${{ secrets.E2E_ADMIN_USERNAME }}
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_USER_USERNAME: ${{ secrets.E2E_USER_USERNAME }}
+      E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+      E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Checkout E2E tests
-        uses: actions/checkout@v4
+      - name: Clone E2E tests
+        run: git clone https://github.com/BBBtp/AezakmiGroup-Tests.git e2e-tests
+
+      - name: Cache Playwright
+        uses: actions/cache@v3
         with:
-          repository: BBBtp/AezakmiGroup-Tests
-          ref: main
-          path: e2e-tests
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('e2e-tests/package-lock.json') }}
 
       - name: Install dependencies
         working-directory: e2e-tests
         run: npm ci
 
-      - name: Install Playwright browsers
+      - name: Install Playwright browsers (skip if cached)
         working-directory: e2e-tests
-        run: npx playwright install --with-deps
+        run: npx playwright install
 
-      - name: Run ${{ matrix.project }} tests
+      - name: Run tests
         working-directory: e2e-tests
-        env:
-          E2E_ADMIN_USERNAME: ${{ secrets.E2E_ADMIN_USERNAME }}
-          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
-          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
-          E2E_USER_USERNAME: ${{ secrets.E2E_USER_USERNAME }}
-          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
-          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
-        run: npx playwright test --project=${{ matrix.project }} --reporter=blob,html,json
+        run: npx playwright test --project=${{ matrix.project }} --reporter=blob,html
 
-      - name: Upload reports
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
+        with:
+          name: blob-${{ matrix.project }}
+          path: e2e-tests/blob-report
+
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: report-${{ matrix.project }}
           path: e2e-tests/playwright-report
 
-      - name: Upload JSON results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: json-${{ matrix.project }}
-          path: e2e-tests/test-results.json
-
-      - name: Upload blob reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: blob-${{ matrix.project }}
-          path: e2e-tests/blob-report
-          retention-days: 1
-
-  # ==========================
-  # 2) MERGE REPORTS
-  # ==========================
   merge-reports:
     runs-on: ubuntu-latest
     needs: e2e
-
     permissions:
       pages: write
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: report-*
-          path: reports
-
-      - name: Download JSON results
-        uses: actions/download-artifact@v4
-        with:
-          pattern: json-*
-          path: json-results
-
-      - name: Download blob reports
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: blob-*
           path: blob-reports
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Get test stats
-        id: stats
+      - name: Merge blob reports
         run: |
-          PASSED=0
-          FAILED=0
-          for json in json-results/json-*/*.json; do
-            [ -f "$json" ] && PASSED=$((PASSED + $(jq -r '.stats.passed // 0' "$json"))) && FAILED=$((FAILED + $(jq -r '.stats.failed // 0' "$json")))
-          done
-          echo "passed=$PASSED" >> $GITHUB_OUTPUT
-          echo "failed=$FAILED" >> $GITHUB_OUTPUT
-          echo "status=$([ $FAILED -eq 0 ] && echo '✅' || echo '❌')" >> $GITHUB_OUTPUT
+          npx playwright merge-reports blob-reports --reporter=html
+          mkdir merged-report
+          cp -r playwright-report/* merged-report/
 
-      - name: Setup Playwright for merge
-        uses: actions/checkout@v4
-        with:
-          repository: BBBtp/AezakmiGroup-Tests
-          ref: main
-          path: e2e-tests
-
-      - name: Install dependencies
-        working-directory: e2e-tests
-        run: npm ci
-
-      - name: Merge reports
-        working-directory: e2e-tests
-        run: |
-          mkdir -p all-blob-reports
-          # Копируем все blob отчеты в одну папку
-          find ../blob-reports -name "*.zip" -exec cp {} all-blob-reports/ \;
-          
-          # Объединяем blob отчеты через playwright merge-reports
-          if ls all-blob-reports/*.zip 1> /dev/null 2>&1; then
-            npx playwright merge-reports --reporter=html all-blob-reports
-            # Перемещаем результат в нужную папку
-            mkdir -p ../merged-report
-            cp -r playwright-report/* ../merged-report/ 2>/dev/null || true
-          else
-            # Fallback: используем JSON отчеты
-            mkdir -p json-reports
-            find ../json-results -name "*.json" -exec cp {} json-reports/ \;
-            if ls json-reports/*.json 1> /dev/null 2>&1; then
-              npx playwright merge-reports --reporter=html json-reports/*.json
-              mkdir -p ../merged-report
-              cp -r playwright-report/* ../merged-report/ 2>/dev/null || true
-            else
-              # Последний fallback: используем первый доступный HTML отчет
-              mkdir -p ../merged-report
-              cp -r ../reports/report-smoke/playwright-report/* ../merged-report/ 2>/dev/null || cp -r ../reports/report-smoke/* ../merged-report/ 2>/dev/null || true
-            fi
-          fi
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: merged-report
 
-      - name: Comment PR with report link
+      - name: Comment PR with report
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: "E2E Test Results"
           message: |
-            ${{ steps.stats.outputs.status }} **Tests Completed**
-            
-            ✅ Passed: ${{ steps.stats.outputs.passed }}
-            ❌ Failed: ${{ steps.stats.outputs.failed }}
-            
             📊 [View Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
 
-  # ==========================
-  # 3) DEPLOY TO GITHUB PAGES
-  # ==========================
   deploy-pages:
     runs-on: ubuntu-latest
     needs: merge-reports
     permissions:
       pages: write
       id-token: write
-
     steps:
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v4
